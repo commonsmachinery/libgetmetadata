@@ -1,0 +1,32 @@
+{
+    "name": "libgetmetadata",
+    "version": "0.0.1",
+    "homepage": "https://github.com/commonsmachinery/libgetmetadata",
+    "author": "Commons Machinery <dev@commonsmachinery.se>",
+    "description": "Collect metadata for creative works from various sources.",
+    "repository": {
+        "type": "git",
+        "url": "https://github.com/commonsmachinery/libgetmetadata.git"
+    },
+    "scripts": {
+        "test": "echo Running test cases requires the full repository"
+    },
+    "main": "./libgetmetadata",
+    "keywords": [
+        "metadata",
+        "rdfa",
+        "oembed"
+    ],
+    "dependencies": {
+        "jsdom": "*",
+        "bluebird": "1.1.x",
+        "uuid": "*",
+        "xmlhttprequest": "*"
+    },
+    "devDependencies": {
+        "mocha": "*",
+        "expect.js": "*",
+        "jsonfile": "*"
+    },
+    "license": "GPLv2"
+}
