@@ -44,8 +44,12 @@ var oembedPropertyMap = {
     }
 };
 
+var defaultRules = {
+    source: ["rdfa", "og", "oembed"],
+};
+
 var addTriple = function(graph, subject, predicate, object) {
-    var object = validateObject(object);
+    //var object = validateObject(object);
 
     if (!graph.hasOwnProperty(subject)) {
         graph[subject] = {};
@@ -58,7 +62,7 @@ var addTriple = function(graph, subject, predicate, object) {
     // do not add if triple is already in the graph
     for (var i = 0; i < graph[subject][predicate].length; i++) {
         var o = graph[subject][predicate][i];
-        if (o.type == object.type && o.value == object.value && o.lang == object.lang) {
+        if (o.type === object.type && o.value === object.value && o.lang === object.lang) {
             return;
         }
     }
@@ -66,73 +70,79 @@ var addTriple = function(graph, subject, predicate, object) {
     graph[subject][predicate].push(object);
 }
 
-function Metadata(document, rules) {
-    this.rdfa = {};
-    this.og = {};
-    this.oembed = {};
+function Metadata(rdfa, og, oembed, rules, document) {
+    this.rdfa = rdfa;
+    this.og = og;
+    this.oembed = oembed;
     this.rules = rules;
-
     this.document = document;
+    this.mainSubject = undefined;
+
+    this.discoverSubjects();
 }
 
-Metadata.prototype.getRDFaMetadata = function(subject) {
+Metadata.prototype.get = function(subject) {
+    var rdfa = this.rdfa;
+    var og = this.og;
+    var oembed = this.oembed;
+    var rules = this.rules;
+
     var result = {};
-    result[subject] = this.rdfa[subject];
-    return result;
-}
+    var oembedSubject;
 
-Metadata.prototype.getMetadata = function() {
-    var result = {};
+    // copy og and rdfa as is
+    [rdfa, og].map(function(graph) {
+        for (var s in graph) {
+            for (var p in graph[s]) {
+                for (var i = 0; i < graph[s][p].length; i++) {
+                    var o = graph[s][p][i];
+                    addTriple(result, s, p, o);
+                }
+            }
+        }
+    });
 
-    var subjects = this.discoverSubjectElements();
+    // oembed in a graph form to result
+    if (oembed) {
+        if (oembed.type === 'photo') {
+            oembedSubject = oembed.url;
+        }
 
-    for (var s in this.rdfa) {
-        for (var p in this.rdfa[s]) {
-            for (var i = 0; i < this.rdfa[s][p].length; i++) {
-                var o = this.rdfa[s][p][i];
-                addTriple(result, s, p, o);
+        for (var key in oembed) {
+            var propertyName = null;
+            var propertyType = null;
+
+            if (oembedPropertyMap[key]) {
+                propertyName = oembedPropertyMap[key].property;
+                propertyType = oembedPropertyMap[key].type;
+            }
+
+            if (rules && rules.oembed && rules.oembed.map && rules.oembed.map[key]) {
+                propertyName = rules.oembed.map[key].property;
+                propertyType = rules.oembed.map[key].type;
+            }
+
+            var oembedObject = ({
+                type: propertyType,
+                value: oembed[key],
+                datatype: propertyType == 'literal' ? "http://www.w3.org/1999/02/22-rdf-syntax-ns#PlainLiteral" : undefined
+            });
+
+            if (propertyName) {
+                addTriple(result, oembedSubject, propertyName, oembedObject);
             }
         }
     }
 
-    for (var s in this.og) {
-        for (var p in this.og[s]) {
-            for (var i = 0; i < this.og[s][p].length; i++) {
-                var o = this.rdfa[s][p][i];
-                addTriple(result, s, p, o);
-            }
-        }
+    if (subject) {
+        var subgraph = {};
+        subgraph[subject] = result[subject];
+        return subgraph;
     }
-
-    // add oembed in a graph form to result
-    var oembedSubject = this.document.documentURI;
-    for (var key in this.oembed) {
-        var propertyName = null;
-        var propertyType = null;
-
-        if (oembedPropertyMap[key]) {
-            propertyName = oembedPropertyMap[key].property;
-            propertyType = oembedPropertyMap[key].type;
-        }
-
-        if (this.rules && this.rules.oembed && this.rules.oembed.map && this.rules.oembed.map[key]) {
-            propertyName = this.rules.oembed.map[key].property;
-            propertyType = this.rules.oembed.map[key].type;
-        }
-
-        var oembedObject = ({
-            type: propertyType,
-            value: oembed[key],
-            datatype: propertyType == 'literal' ? "http://www.w3.org/1999/02/22-rdf-syntax-ns#PlainLiteral" : undefined
-        });
-
-        if (propertyName) {
-            addTriple(result, oembedSubject, propertyName, oembedObject);
-        }
+    else {
+        return result;
     }
-
-    return result;
-}
+};
 
 /**
  * Discover elements and subjects based on standards, rather than
@@ -145,117 +155,57 @@ Metadata.prototype.getMetadata = function() {
  * * If the element src is the unique object of an og:image triplet,
  *   use the subject of the triplet.
  */
-Metadata.prototype.discoverSubjectElements = function() {
-    var result = [];
+Metadata.prototype.discoverSubjects = function() {
+    var subjects = [];
+    var document = this.document;
 
-    // For now, just look at images.  We can't do this much smarter since
-    // we must decode img.src URIs to get a uniform encoding of them.
-    var elements = this.document.querySelectorAll('img');
+    if (document) {
+        // For now, just look at images.  We can't do this much smarter since
+        // we must decode img.src URIs to get a uniform encoding of them.
+        var elements = document.querySelectorAll('img');
 
-    for (var i = 0; i < elements.length; i++) {
-        var element = elements[i];
+        for (var i = 0; i < elements.length; i++) {
+            var element = elements[i];
 
-        var subject = null;
-        var main = false;
+            var subject = null;
+            var main = false;
 
-        if (element.id && this.rdfa.hasOwnProperty(element.id)) {
-            subject = this.document.documentURI + '#' + element.id;
-        }
+            if (element.id && this.rdfa.hasOwnProperty(element.id)) {
+                subject = document.documentURI + '#' + element.id;
+            }
 
-        var src = decodeURIComponent(element.src);
-        if (src && this.rdfa.hasOwnProperty(src)) {
-            subject = src;
-        }
-
-        if (!subject) {
-            var og_image = this.og[this.document.documentURI]["http://ogp.me/ns#image"];
-
-            /*if (subjects.length === 1) {
-                subject = document.data.getSubject(subjects[0]);
-                main = true;
-                console.debug('found subject on og:image: ' + subject.id);
-            }*/
-        }
-
-        if (!subject) {
-            if (this.oembed.url == src) {
+            var src = decodeURIComponent(element.src);
+            if (!subject && src && this.rdfa.hasOwnProperty(src)) {
                 subject = src;
+            }
+
+            if (!subject && this.og[this.document.documentURI] && this.og[this.document.documentURI]["http://ogp.me/ns#image"]) {
+                subject = this.og[this.document.documentURI]["http://ogp.me/ns#image"];
                 main = true;
             }
-        }
 
-        if (subject) {
-            result.push({
-                element: element,
-                subject: subject,
-                id: uuid.v4(),
-                main: main,
-                //mainElementSelector: null,
-                //overlays: null
-            });
-        }
-    }
+            if (!subject) {
+                if (this.oembed && this.oembed.url == src) {
+                    subject = src;
+                    main = true;
+                }
+            }
 
-    return result;
-};
-
-Metadata.prototype.rewriteMainSubject = function() {
-    var sources, i, arg, element, objects, oembedParameter;
-
-    var doRewrite = function(el, newURI, source) {
-        console.debug(source + ': rewriting ' + el.subject.id + ' to ' + newURI);
-
-        el.subject.id = newURI;
-
-        // Also add the new name to the graph, so serialisation can work
-        document.data.graph.subjects[newURI] = el.subject;
-    };
-
-    if (!(this.rules.rewriteMainSubject)) {
-        return;
-    }
-
-    sources = typeof this.rules.rewriteMainSubject === 'string' ?
-        [this.rules.rewriteMainSubject] : this.rules.rewriteMainSubject;
-
-    for (i = 0; i < sources.length; i++) {
-        if (sources[i].indexOf('oembed:') === 0) {
-            // use parameter from oembed data, typically web_page
-            arg = sources[i].slice(7);
-            oembedParameter = this.oembed[arg];
-            if (oembedParameter) {
-                doRewrite(el, oembedParameter, sources[i]);
-                return;
+            if (subject) {
+                subjects.push({
+                    element: element,
+                    subject: subject,
+                    id: uuid.v4(),
+                    main: main,
+                    //mainElementSelector: null,
+                    //overlays: null
+                });
             }
         }
-        else if (sources[i].indexOf('rdf:') === 0) {
-            // Find a triple with this predicate
-            arg = sources[i].slice(4);
-            objects = el.subject.getValues(arg);
-
-            if (objects.length === 1 && objects[0]) {
-                doRewrite(el, objects[0], sources[i]);
-                return;
-            }
+        if (subjects.length == 1) {
+            this.mainSubject = subjects[0].subject;
         }
-        else if (sources[i].indexOf('link:') === 0) {
-            // Find a link with this attribute
-            arg = sources[i].slice(5);
-            element = document.querySelector('link[' + arg + ']');
-
-            if (element && element.href) {
-                doRewrite(el, element.href, sources[i]);
-                return;
-            }
-        }
-        else {
-            console.warn('unknown subject rewrite source: ' + sources[i]);
-        }
-    }
-}
-
-Metadata.prototype.toString = function() {
-    return JSON.stringify(this.getMetadata());
+    } // if (document)
 }
 
 /**
@@ -272,7 +222,8 @@ var _getDocument = function(uri, callback) {
         if (_nodejs) {
             document = new jsdom.jsdom(req.responseText);
             document.documentURI = uri;
-        } else {
+        }
+        else {
             document = req.responseXML;
         }
 
@@ -287,117 +238,166 @@ var _getDocument = function(uri, callback) {
 }
 
 /**
- * Get RDFa metadata from the document.
+ * Get RDFa metadata and oembed endpoint from a document.
+ *
+ * Returns an object with the following attributes:
+ * * rdfa - RDFa metadata as RDF/JSON
+ * * og - OpenGraph metadata as RDF/JSON
+ * * oembedURL - oembed URL, if discovered
  */
-var getMetadataFromDOM = function(document, options, rules) {
+var getMetadataFromDOM = function(document, options, rules, callback) {
+    var oembedURL = null;
     var processor = new RDFaProcessor();
     processor.process(document);
 
-    return {rdfa: processor.rdfa, og: processor.og};
+    // TODO: support xml
+    var oembedLink = document.querySelector('head > link[rel="alternate"][type="application/json+oembed"]');
+    if (oembedLink) {
+        oembedURL = oembedLink.attributes.href.value;
+    }
+
+    callback(null, {
+        rdfa: processor.rdfa,
+        og: processor.og,
+        oembedURL: oembedURL,
+    });
 }
 
 exports.getMetadataFromDOM = getMetadataFromDOM;
 
 /**
- * Return oembed URL using <link rel="alternate"> tags for a given document.
- */
-var discoverOEmbedURL = function(document) {
-    var match;
-
-    // TODO: support xml
-    match = document.querySelector('head > link[rel="alternate"][type="application/json+oembed"]');
-
-    if (match) {
-        return match.attributes.href.value;
-    } else {
-        return null;
-    }
-}
-
-var _getPublishedMetadataImpl = function(document, options, rules, callback) {
-    var oembedSubject = document.documentURI;
-    var oembedURL;
-
-    if (rules && rules.oembed && rules.oembed.endpoint) {
-        oembedURL = rules.oembed.endpoint
-    } else {
-        oembedURL = discoverOEmbedURL(document);
-    }
-
-    if (oembedURL) {
-        var req = new XMLHttpRequest();
-
-        req.open('GET', oembedURL, true);
-        req.onload = function() {
-            var oembed = JSON.parse(req.responseText);
-            callback(null, oembed);
-        }
-
-        req.onerror = function() {
-            callback(new Error('Error getting oEmbed'), null);
-        }
-        req.send();
-    } else {
-        // no oembedURL, so return an empty dict
-        callback(null, {});
-    }
-}
-
-/**
  * Fetch externally-published metadata, i.e. oembed
+ * URI is the actual endpoint URL.
  */
-var getPublishedMetadata = function(source, options, rules, callback) {
+var getPublishedMetadata = function(uri, options, rules, callback) {
     var document;
 
-    if (typeof source == 'string') {
-        _getDocument(source, function(error, document) {
-            if (error) {
-                callback(new Error('Could not get metadata for ' + source), null);
-            } else {
-                _getPublishedMetadataImpl(document, options, rules, callback);
-            }
-        });
-    } else {
-        document = source;
-        _getPublishedMetadataImpl(document, options, rules, callback);
+    var req = new XMLHttpRequest();
+
+    req.open('GET', uri, true);
+    req.onload = function() {
+        var oembed = JSON.parse(req.responseText);
+        callback(null, oembed);
     }
+
+    req.onerror = function() {
+        callback(new Error('Error getting oEmbed'), null);
+    }
+    req.send();
 }
 
 exports.getPublishedMetadata = getPublishedMetadata;
 
-var _getMetadataImpl = function(document, options, callback) {
+var getMetadataImpl = function(document, options, rules, callback) {
     var processDOM;
     var fetchPublished;
     var rules = {}; // TODO: uses default rules
-    var metadata = new Metadata(document, rules);
+    var metadata;
 
     if (options && options.hasOwnProperty('processDOM')) {
         processDOM = options.processDOM;
-    } else {
+    }
+    else {
         processDOM = getMetadataFromDOM;
     }
 
     if (options && options.hasOwnProperty('fetchPublished')) {
         fetchPublished = options.fetchPublished;
-    } else {
+    }
+    else {
         fetchPublished = getPublishedMetadata;
     }
 
-    var documentMetadata = processDOM(document, options, rules);
-    metadata.rdfa = documentMetadata.rdfa;
-    metadata.og = documentMetadata.og;
-
-    if (fetchPublished) {
-        fetchPublished(document, options, rules, function(error, publishedMetadata) {
+    if (processDOM && document) {
+        processDOM(document, options, rules, function(error, documentMetadata) {
             if (error) {
                 callback(error, null);
-            } else {
-                metadata.oembed = publishedMetadata;
-                callback(null, metadata);
+            }
+            else {
+                if (fetchPublished) {
+                    var oembedURL;
+
+                    if (rules.oembed && rules.oembed.endpoint) {
+                        oembedURL = rules.oembed.endpoint;
+                    }
+                    else {
+                        oembedURL = documentMetadata.oembedURL;
+                    }
+
+                    if (oembedURL) {
+                        fetchPublished(oembedURL, options, rules, function(error, publishedMetadata) {
+                            if (error) {
+                                callback(error, null);
+                            }
+                            else {
+                                // have rdfa, og(?), oembed
+                                metadata = new Metadata(
+                                    documentMetadata.rdfa,
+                                    documentMetadata.og,
+                                    publishedMetadata,
+                                    rules,
+                                    document
+                                );
+
+                                //metadata.discoverSubjects(document, metadata, rules);
+                                callback(null, metadata);
+                            }
+                        });
+                    }
+                    else {
+                        // no oembedURL, have rdfa, og(?)
+                        metadata = new Metadata(
+                            documentMetadata.rdfa,
+                            documentMetadata.og,
+                            null,
+                            rules,
+                            document
+                        );
+
+                        //metadata.discoverSubjects();
+                        callback(null, metadata);
+                    }
+                }
+                else {
+                    // no fetchPublished, have rdfa, og(?)
+                    metadata = new Metadata(
+                        documentMetadata.rdfa,
+                        documentMetadata.og,
+                        null,
+                        rules,
+                        document
+                    );
+
+                    //metadata.discoverSubjects(metadata, rules);
+                    callback(null, metadata);
+                }
             }
         });
-    } else {
-        callback(null, metadata);
+    }
+    else if (fetchPublished) {
+        if (rules.oembed && rules.oembed.endpoint) {
+            fetchPublished(rules.oembed.endpoint, options, rules, function(error, publishedMetadata) {
+                if (error) {
+                    callback(error, null);
+                }
+                else {
+                    // have oembed
+                    metadata = new Metadata(
+                        null,
+                        null,
+                        publishedMetadata,
+                        rules,
+                        document
+                    );
+
+                    //metadata.discoverSubjects(documentMetadata.document, metadata, rules);
+                    callback(null, metadata);
+                }
+            });
+        }
+        else {
+            callback(new Error('no oembed endpoint in rules'), null);
+        }
     }
 }
 
@@ -406,7 +406,7 @@ var _getMetadataImpl = function(document, options, callback) {
  * and call callback(error, result) when done.
  *
  * Arguments:
- * source - URI or document
+ * source - URI or document (can be null)
  * options - container for optional override functions for getting published or RDFa metadata
  *   - processDOM: function(uri, options, rules, callback)
  *       Called by getMetadata to fetch metadata from DOM for a given URI.
@@ -414,23 +414,23 @@ var _getMetadataImpl = function(document, options, callback) {
  *   - fetchPublished: function(uri, options, rules, callback)
  *       Called by getMetadata to fetch published metadata.
  *       Default: getPublishedMetadata().
- *
+ * rules - site-specific rules for subject mangling and fetching oEmbed.
+ * callback - function(error, metadata) to be called on success or failure.
  */
-var getMetadata = function(source, options, callback) {
-    var document;
-
-    if (typeof source == 'string') {
+var getMetadata = function(source, options, rules, callback) {
+    if (typeof source === 'string') {
         _getDocument(source, function(error, document) {
             if (error) {
-                callback(new Error('Could not get metadata for ' + source), null);
-            } else {
-                _getMetadataImpl(document, options, callback);
+                callback(error, null);
+            }
+            else {
+                getMetadataImpl(document, options, rules, callback);
             }
         });
-    } else {
-        document = source;
-        _getMetadataImpl(document, options, callback);
     }
-}
+    else {
+        getMetadataImpl(document, options, rules, callback);
+    }
+};
 
 exports.getMetadata = getMetadata;
