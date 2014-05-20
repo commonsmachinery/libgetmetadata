@@ -8,6 +8,9 @@
 //
 // Distributed under an GPLv2 license, please see LICENSE in the top dir.
 
+/* global document */
+
+
 'use strict';
 
 var _nodejs = (typeof module !== 'undefined' && typeof module.exports !== 'undefined');
@@ -15,11 +18,60 @@ var _nodejs = (typeof module !== 'undefined' && typeof module.exports !== 'undef
 if (_nodejs) {
     var XMLHttpRequest = require('xmlhttprequest').XMLHttpRequest;
     var jsdom = require('jsdom');
-    var Promise = require('bluebird');
     var uuid = require('uuid');
 }
 
-var RDFaProcessor = require('./rdfa-glue.js').JsonRDFaProcessor;
+//
+// Parse RDFa out of HTML documents into RDF/JSON, separating the
+// pseudo-RDFa OpenGraph statements into a separate graph
+//
+var RDFaProcessor = require('./RDFaProcessor.js').RDFaProcessor;
+
+function JsonRDFaProcessor() {
+    this.rdfa = {};
+    this.og = {};
+    RDFaProcessor.call(this);
+}
+
+JsonRDFaProcessor.prototype = new RDFaProcessor();
+JsonRDFaProcessor.prototype.constructor = RDFaProcessor;
+
+JsonRDFaProcessor.prototype.addTriple = function(origin, subject, predicate, object) {
+    var graph;
+    if (/^http:\/\/ogp.me\//.test(predicate)) {
+        graph = this.og;
+    } else {
+        graph = this.rdfa;
+    }
+
+    if (!graph.hasOwnProperty(subject)) {
+        graph[subject] = {};
+    }
+
+    if (!graph[subject].hasOwnProperty(predicate)) {
+        graph[subject][predicate] = [];
+    }
+
+    var jsonType = object.type === 'http://www.w3.org/1999/02/22-rdf-syntax-ns#object' ? 'uri' : 'literal';
+    var jsonObject = {
+        type: jsonType,
+        value: object.value,
+        datatype: jsonType === 'literal' ? object.type : undefined,
+        lang: object.language || undefined,
+    };
+
+    // do not add if triple is already in the graph
+    /*for (var i = 0; i < graph[subject][predicate].length; i++) {
+        var o = graph[subject][predicate][i];
+        if (o.type == jsonObject.type && o.value == jsonObject.value && o.lang == jsonObject.lang) {
+            return;
+        }
+    }*/
+
+    graph[subject][predicate].push(jsonObject);
+};
+
+
 
 var oembedPropertyMap = {
     'title': {
@@ -68,7 +120,7 @@ var addTriple = function(graph, subject, predicate, object) {
     }
 
     graph[subject][predicate].push(object);
-}
+};
 
 function Metadata(rdfa, og, oembed, rules, document) {
     this.rdfa = rdfa;
@@ -93,10 +145,14 @@ Metadata.prototype.get = function(subject) {
     // copy og and rdfa as is
     [rdfa, og].map(function(graph) {
         for (var s in graph) {
-            for (var p in graph[s]) {
-                for (var i = 0; i < graph[s][p].length; i++) {
-                    var o = graph[s][p][i];
-                    addTriple(result, s, p, o);
+            if (graph.hasOwnProperty(s)) {
+                for (var p in graph[s]) {
+                    if (graph[s].hasOwnProperty(p)) {
+                        for (var i = 0; i < graph[s][p].length; i++) {
+                            var o = graph[s][p][i];
+                            addTriple(result, s, p, o);
+                        }
+                    }
                 }
             }
         }
@@ -109,27 +165,29 @@ Metadata.prototype.get = function(subject) {
         }
 
         for (var key in oembed) {
-            var propertyName = null;
-            var propertyType = null;
+            if (oembed.hasOwnProperty(key)) {
+                var propertyName = null;
+                var propertyType = null;
 
-            if (oembedPropertyMap[key]) {
-                propertyName = oembedPropertyMap[key].property;
-                propertyType = oembedPropertyMap[key].type;
-            }
+                if (oembedPropertyMap[key]) {
+                    propertyName = oembedPropertyMap[key].property;
+                    propertyType = oembedPropertyMap[key].type;
+                }
 
-            if (rules && rules.oembed && rules.oembed.map && rules.oembed.map[key]) {
-                propertyName = rules.oembed.map[key].property;
-                propertyType = rules.oembed.map[key].type;
-            }
+                if (rules && rules.oembed && rules.oembed.map && rules.oembed.map[key]) {
+                    propertyName = rules.oembed.map[key].property;
+                    propertyType = rules.oembed.map[key].type;
+                }
 
-            var oembedObject = ({
-                type: propertyType,
-                value: oembed[key],
-                datatype: propertyType == 'literal' ? "http://www.w3.org/1999/02/22-rdf-syntax-ns#PlainLiteral" : undefined
-            });
+                var oembedObject = ({
+                    type: propertyType,
+                    value: oembed[key],
+                    datatype: propertyType === 'literal' ? "http://www.w3.org/1999/02/22-rdf-syntax-ns#PlainLiteral" : undefined
+                });
 
-            if (propertyName) {
-                addTriple(result, oembedSubject, propertyName, oembedObject);
+                if (propertyName) {
+                    addTriple(result, oembedSubject, propertyName, oembedObject);
+                }
             }
         }
     }
@@ -185,7 +243,7 @@ Metadata.prototype.discoverSubjects = function() {
             }
 
             if (!subject) {
-                if (this.oembed && this.oembed.url == src) {
+                if (this.oembed && this.oembed.url === src) {
                     subject = src;
                     main = true;
                 }
@@ -202,11 +260,11 @@ Metadata.prototype.discoverSubjects = function() {
                 });
             }
         }
-        if (subjects.length == 1) {
+        if (subjects.length === 1) {
             this.mainSubject = subjects[0].subject;
         }
     } // if (document)
-}
+};
 
 /**
  * Fetch and parse HTML document from the specified URI,
@@ -235,7 +293,7 @@ var _getDocument = function(uri, callback) {
     };
 
     req.send();
-}
+};
 
 /**
  * Get RDFa metadata and oembed endpoint from a document.
@@ -247,7 +305,7 @@ var _getDocument = function(uri, callback) {
  */
 var getMetadataFromDOM = function(document, options, rules, callback) {
     var oembedURL = null;
-    var processor = new RDFaProcessor();
+    var processor = new JsonRDFaProcessor();
     processor.process(document);
 
     // TODO: support xml
@@ -261,7 +319,7 @@ var getMetadataFromDOM = function(document, options, rules, callback) {
         og: processor.og,
         oembedURL: oembedURL,
     });
-}
+};
 
 exports.getMetadataFromDOM = getMetadataFromDOM;
 
@@ -270,29 +328,30 @@ exports.getMetadataFromDOM = getMetadataFromDOM;
  * URI is the actual endpoint URL.
  */
 var getPublishedMetadata = function(uri, options, rules, callback) {
-    var document;
-
     var req = new XMLHttpRequest();
 
     req.open('GET', uri, true);
     req.onload = function() {
         var oembed = JSON.parse(req.responseText);
         callback(null, oembed);
-    }
+    };
 
     req.onerror = function() {
         callback(new Error('Error getting oEmbed'), null);
-    }
+    };
     req.send();
-}
+};
 
 exports.getPublishedMetadata = getPublishedMetadata;
 
 var getMetadataImpl = function(document, options, rules, callback) {
     var processDOM;
     var fetchPublished;
-    var rules = {}; // TODO: uses default rules
     var metadata;
+
+    if (!rules) {
+        rules = defaultRules;
+    }
 
     if (options && options.hasOwnProperty('processDOM')) {
         processDOM = options.processDOM;
@@ -399,7 +458,7 @@ var getMetadataImpl = function(document, options, rules, callback) {
             callback(new Error('no oembed endpoint in rules'), null);
         }
     }
-}
+};
 
 /**
  * Get all available metadata for a given source (uri or document)
@@ -419,12 +478,12 @@ var getMetadataImpl = function(document, options, rules, callback) {
  */
 var getMetadata = function(source, options, rules, callback) {
     if (typeof source === 'string') {
-        _getDocument(source, function(error, document) {
+        _getDocument(source, function(error, doc) {
             if (error) {
                 callback(error, null);
             }
             else {
-                getMetadataImpl(document, options, rules, callback);
+                getMetadataImpl(doc, options, rules, callback);
             }
         });
     }

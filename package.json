@@ -19,14 +19,14 @@
     ],
     "dependencies": {
         "jsdom": "*",
-        "bluebird": "1.1.x",
         "uuid": "*",
         "xmlhttprequest": "*"
     },
     "devDependencies": {
         "mocha": "*",
         "expect.js": "*",
-        "jsonfile": "*"
+        "jsonfile": "*",
+        "jshint": "*"
     },
     "license": "GPLv2"
 }
