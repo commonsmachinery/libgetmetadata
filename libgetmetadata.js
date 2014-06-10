@@ -399,13 +399,23 @@ var _getDocument = function(uri, callback) {
     var req = new XMLHttpRequest();
 
     if (_nodejs) {
-        jsdom.env({
-            url: uri,
-            done: function(error, window) {
-                window.document.documentURI = uri; // still required for RDFaProcessor
-                callback(error, window.document);
-            }
-        });
+        if (uri.match(/^file:/)) {
+            jsdom.env({
+                file: uri.slice(5),
+                done: function(error, window) {
+                    window.document.documentURI = uri; // still required for RDFaProcessor
+                    callback(error, window.document);
+                }
+            });
+        } else {
+            jsdom.env({
+                url: uri,
+                done: function(error, window) {
+                    window.document.documentURI = uri; // still required for RDFaProcessor
+                    callback(error, window.document);
+                }
+            });
+        }
     } else {
         req.open('GET', uri, true);
 
