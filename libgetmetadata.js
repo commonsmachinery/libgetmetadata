@@ -23,6 +23,10 @@ if (_nodejs) {
     var RDFaProcessor = rdfa.RDFaProcessor;
     var XMLHttpRequest = xhr.XMLHttpRequest;
     var XPathEvaluator = jsdom.dom.level3.xpath.XPathEvaluator;
+
+    if (!console.debug) {
+        console.debug = process.env.NODE_ENV == 'development' ? console.info : function(){};
+    }
 }
 
 var og_image = 'http://ogp.me/ns#image';
@@ -258,7 +262,7 @@ function Metadata(rdfa, og, oembed, rules, document) {
         if (element.id) {
             id = document.documentURI + element.id;
             if (id in rdfa) {
-                console.info('found subject on ID: ' + element.id);
+                console.debug('found subject on ID: ' + element.id);
                 subject = id;
             }
         }
@@ -267,7 +271,7 @@ function Metadata(rdfa, og, oembed, rules, document) {
             src = decodeURIComponent(element.src); // Get rid of any % escapes
             if (src in rdfa) {
                 subject = src;
-                console.info('found subject on src: ' + src);
+                console.debug('found subject on src: ' + src);
             }
             // TODO: we don't really need to dig deep into og (it's flat)
             else {
@@ -279,7 +283,7 @@ function Metadata(rdfa, og, oembed, rules, document) {
                 if (subjects[0]) {
                     subject = subjects[0];
                     mainSubject = subject;
-                    console.info('found subject on og:image: ' + subject);
+                    console.debug('found subject on og:image: ' + subject);
                 }
             }
         }
@@ -292,7 +296,7 @@ function Metadata(rdfa, og, oembed, rules, document) {
                     mainSubject = subject;
                     main = true;
 
-                    console.info('main subject discovered: ' + mainSubject);
+                    console.debug('main subject discovered: ' + mainSubject);
                     break;
                 }
             }
@@ -463,7 +467,7 @@ var getPublishedMetadata = function(uri, options, rules, callback) {
         var req = new XMLHttpRequest();
     }
 
-    console.info('Getting oembed from: ' + uri);
+    console.debug('Getting oembed from: ' + uri);
     req.open('GET', uri, true);
 
     req.onload = function() {
