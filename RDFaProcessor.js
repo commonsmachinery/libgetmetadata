@@ -11,6 +11,8 @@ THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND 
 // this is RDFaProcessor.1.2.0.js changed to work with node.js and its DOM implementations
 // which do not provide baseURI in some cases (document.documentURI is used instead of that).
 
+var _nodejs = (typeof module !== 'undefined' && typeof module.exports !== 'undefined');
+
 if (typeof Node === 'undefined') {
     var Node = {
        ELEMENT_NODE:                 1,
@@ -671,6 +673,7 @@ RDFaProcessor.prototype.process = function(node, options) {
       if (current.baseURI === undefined) {
          current.baseURI = current.ownerDocument.documentURI + '#';
       }
+
       var base = this.parseURI(removeHash(current.baseURI));
       current.item = null;
 
@@ -1545,4 +1548,6 @@ GraphRDFaProcessor.prototype.copyProperties = function() {
    }
 }
 
-exports.RDFaProcessor = RDFaProcessor;
+if (_nodejs) {
+   exports.RDFaProcessor = RDFaProcessor;
+}
