@@ -203,7 +203,7 @@ function Metadata(rdfa, og, oembed, rules, document) {
             else if (sources[i].indexOf('rdfa:') === 0) {
                 // Find a triple with this predicate
                 arg = sources[i].slice(5);
-                objects = rdfa[mainSubject][arg];
+                objects = getSubjects(rdfa, arg);
 
                 if (objects.length === 1 && objects[0]) {
                     rewriteMainSubject = objects[0].value;
