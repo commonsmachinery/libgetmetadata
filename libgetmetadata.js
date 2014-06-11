@@ -59,11 +59,11 @@ var ontologyMap = {
     'http://purl.org/dc/terms/creator':                 'creator',
     'http://creativecommons.org/ns#attributionName':    'creator',
 
-    'http://creativecommons.org/ns#attributionURL':     'attributionURL',
+    //'http://creativecommons.org/ns#attributionURL':     'attributionURL',
 
-    'http://www.w3.org/1999/xhtml/vocab#license':       'license',
-    'http://creativecommons.org/ns#license':            'license',
-    'http://purl.org/dc/terms/license':                 'license',
+    'http://www.w3.org/1999/xhtml/vocab#license':       'policy',
+    'http://creativecommons.org/ns#license':            'policy',
+    'http://purl.org/dc/terms/license':                 'policy',
 };
 
 var defaultRules = {
@@ -110,9 +110,8 @@ JsonRDFaProcessor.prototype.addTriple = function(origin, subject, predicate, obj
     graph[subject][predicate].push(jsonObject);
 };
 
-var addTriple = function(graph, subject, predicate, object) {
-    //var object = validateObject(object);
-
+// add triple to graph and copy object value to property dictionary if mapped
+var copyTriple = function(subject, predicate, object, graph, properties) {
     if (!graph.hasOwnProperty(subject)) {
         graph[subject] = {};
     }
@@ -130,6 +129,14 @@ var addTriple = function(graph, subject, predicate, object) {
     }
 
     graph[subject][predicate].push(object);
+
+    // add core property
+    if (!(subject in properties)) {
+        properties[subject] = {}
+    }
+    if (predicate in ontologyMap) {
+        properties[subject][ontologyMap[predicate]] = object.value;
+    }
 };
 
 var getSubjects = function(graph, predicate, object) {
@@ -162,7 +169,7 @@ var getSubjects = function(graph, predicate, object) {
 // thanks wanderingstan at morethanwarm dot mail dot com for the
 // initial work.
 function evaluateXPath(aNode, aExpr) {
-    var xpe = new XPathEvaluator();
+    var xpe = aNode.ownerDocument || aNode;
     var nsResolver = xpe.createNSResolver(aNode.ownerDocument == null ?
         aNode.documentElement : aNode.ownerDocument.documentElement);
     var result = xpe.evaluate(aExpr, aNode, null, 0, null);
@@ -178,7 +185,7 @@ function Metadata(rdfa, og, oembed, rules, document) {
     var i, j, elements, element, subject, subjects, id, src, selector, sources, arg, objects, main;
     var mainSubject;
     var rewriteMainSubject;
-    var metadataGraph;
+    var metadataGraph = {};
     var properties = {};
 
     // look for new main subject, if dictated by rules
@@ -275,108 +282,133 @@ function Metadata(rdfa, og, oembed, rules, document) {
             }
             // TODO: we don't really need to dig deep into og (it's flat)
             else {
-                subjects = getSubjects(og, og_image, {
-                    type: 'literal',
-                    value: src
-                });
+                subjects = getSubjects(og, og_image, { type: 'literal', value: src });
 
                 if (subjects[0]) {
                     subject = subjects[0];
-                    mainSubject = subject;
                     console.debug('found subject on og:image: ' + subject);
                 }
             }
         }
 
-        if (subject && rules && rules.mainElement) {
+        if (rules && rules.mainElement) {
             for (j = 0; j < rules.mainElement.length; j++) {
                 selector = rules.mainElement[j];
 
-                if (element.matchesSelector(selector)) {
-                    mainSubject = subject;
+                var matchMethod = element.matchesSelector || element.webkitMatchesSelector || element.mozMatchesSelector;
+
+                if (matchMethod.call(element, selector)) {
+                    console.debug('main element discovered with selector: ' + selector);
+
+                    // Locate the subject for this element, if not yet known. Order tested:
+                    //
+                    // * single-subject: If there's a single subject, use that
+                    // * document: use the document URL
+                    //
+                    // Can be overridden by siteRules.mainSubject.
+
+                    if (!subject) {
+                        if (rules && rules.mainSubject) {
+                            sources = typeof rules.mainSubject === 'string' ?
+                                [rules.mainSubject] : rules.mainSubject;
+                        }
+                        else {
+                            sources = [
+                                'single-subject',
+                                'document'
+                            ];
+                        }
+
+                        sources.forEach(function(source){
+                            switch (source) {
+                                case 'single-subject':
+                                    // TODO: consider og for this case
+                                    subjects = Object.keys(rdfa)
+                                    if (subjects.length === 1) {
+                                        subject = subjects[0];
+                                        console.debug('found single subject: ' + subjects[0]);
+                                    }
+                                    break;
+
+                                case 'document':
+                                    subject = document.documentURI;
+                                    console.debug('found subject for document: ' + subject);
+                                    break;
+
+                                default:
+                                    throw new Error('unknown siteRules.mainSubject: ' + sources[i]);
+                                    break;
+                            }
+                        });
+                    }
+
+                    if (!subject) {
+                        throw new Error("Main subject not found");
+                    }
                     main = true;
 
-                    console.debug('main subject discovered: ' + mainSubject);
+                    // expose mainSubject to the user as well
+                    this.mainSubject = rewriteMainSubject ? rewriteMainSubject : subject;
                     break;
                 }
             }
         }
-    }
 
-    // fill the graph, rewriting main subject if required
-    metadataGraph = {};
+        if (!subject)
+            continue;
 
-    // og, rdfa
-    [rdfa, og].map(function(graph) {
-        for (var s in graph) {
-            if (graph.hasOwnProperty(s)) {
-                for (var p in graph[s]) {
-                    if (graph[s].hasOwnProperty(p)) {
-                        for (var i = 0; i < graph[s][p].length; i++) {
-                            var o = graph[s][p][i];
+        // copy metadata for this subject to graph in order from rules
+        rules.source.forEach(function(source) {
+            // oembed
+            if (source == 'oembed' && oembed && main) {
+                for (var key in oembed) {
+                    if (oembed.hasOwnProperty(key)) {
+                        var propertyName = null;
+                        var propertyType = null;
 
-                            if (graph === rdfa && s === mainSubject && rewriteMainSubject) {
-                                addTriple(metadataGraph, rewriteMainSubject, p, o);
-                            }
-                            else if (graph === og && rewriteMainSubject) {
-                                addTriple(metadataGraph, rewriteMainSubject, p, o);
-                            }
-                            else {
-                                addTriple(metadataGraph, s, p, o);
+                        if (oembedPropertyMap[key]) {
+                            propertyName = oembedPropertyMap[key].property;
+                            propertyType = oembedPropertyMap[key].type;
+                        }
+
+                        if (rules.oembed.map && rules.oembed.map[key]) {
+                            propertyName = rules.oembed.map[key].property;
+                            propertyType = rules.oembed.map[key].type;
+                        }
+
+                        var oembedObject = ({
+                            type: propertyType,
+                            value: oembed[key],
+                            datatype: propertyType === 'literal' ? 'http://www.w3.org/1999/02/22-rdf-syntax-ns#PlainLiteral' : undefined
+                        });
+
+                        if (propertyName) {
+                            if (rewriteMainSubject) {
+                                copyTriple(rewriteMainSubject, propertyName, oembedObject, metadataGraph, properties);
+                            } else {
+                                copyTriple(subject, propertyName, oembedObject, metadataGraph, properties);
                             }
                         }
                     }
                 }
             }
-        }
-    });
+            // rdfa, og
+            else if ((source == 'rdfa' && subject in rdfa) || (source == 'og' && subject in og)) {
+                var graph = {'rdfa': rdfa, 'og': og}[source];
 
-    // oembed
-    if (oembed && rewriteMainSubject) {
-        for (var key in oembed) {
-            if (oembed.hasOwnProperty(key)) {
-                var propertyName = null;
-                var propertyType = null;
-
-                if (oembedPropertyMap[key]) {
-                    propertyName = oembedPropertyMap[key].property;
-                    propertyType = oembedPropertyMap[key].type;
-                }
-
-                if (rules.oembed.map && rules.oembed.map[key]) {
-                    propertyName = rules.oembed.map[key].property;
-                    propertyType = rules.oembed.map[key].type;
-                }
-
-                var oembedObject = ({
-                    type: propertyType,
-                    value: oembed[key],
-                    datatype: propertyType === 'literal' ? 'http://www.w3.org/1999/02/22-rdf-syntax-ns#PlainLiteral' : undefined
-                });
-
-                if (propertyName) {
-                    addTriple(metadataGraph, rewriteMainSubject, propertyName, oembedObject);
-                }
-            }
-        }
-    }
-
-    for (var s in metadataGraph) {
-        if (metadataGraph.hasOwnProperty(s)) {
-            for (var p in metadataGraph[s]) {
-                if (metadataGraph[s].hasOwnProperty(p)) {
-                    for (var i = 0; i < metadataGraph[s][p].length; i++) {
-                        var o = metadataGraph[s][p][i];
-
-                        if (!(s in properties)) {
-                            properties[s] = {}
-                        } else if (p in ontologyMap) {
-                            properties[s][ontologyMap[p]] = o.value;
-                        }
+                for (var predicate in graph[subject]) {
+                    if (graph[subject].hasOwnProperty(predicate)) {
+                        graph[subject][predicate].forEach(function(object) {
+                            if (main && rewriteMainSubject) {
+                                copyTriple(rewriteMainSubject, predicate, object, metadataGraph, properties);
+                            } else {
+                                copyTriple(subject, predicate, object, metadataGraph, properties);
+                            }
+                        });
                     }
                 }
             }
-        }
+        });
     }
 
     this.rdfa = rdfa;
@@ -387,7 +419,6 @@ function Metadata(rdfa, og, oembed, rules, document) {
 
     this.graph = metadataGraph;
     this.properties = properties;
-    this.mainSubject = rewriteMainSubject ? rewriteMainSubject : mainSubject;
 }
 
 /**
