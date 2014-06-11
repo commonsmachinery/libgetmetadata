@@ -17,15 +17,13 @@ var _nodejs = (typeof module !== 'undefined' && typeof module.exports !== 'undef
 if (_nodejs) {
     var xhr = require('xmlhttprequest');
     var jsdom = require('jsdom');
-    var uuid = require('uuid');
     var rdfa = require('./RDFaProcessor.js');
 
     var RDFaProcessor = rdfa.RDFaProcessor;
     var XMLHttpRequest = xhr.XMLHttpRequest;
-    var XPathEvaluator = jsdom.dom.level3.xpath.XPathEvaluator;
 
     if (!console.debug) {
-        console.debug = process.env.NODE_ENV == 'development' ? console.info : function(){};
+        console.debug = process.env.NODE_ENV === 'development' ? console.info : function(){};
     }
 }
 
@@ -132,7 +130,7 @@ var copyTriple = function(subject, predicate, object, graph, properties) {
 
     // add core property
     if (!(subject in properties)) {
-        properties[subject] = {}
+        properties[subject] = {};
     }
     if (predicate in ontologyMap) {
         properties[subject][ontologyMap[predicate]] = object.value;
@@ -162,7 +160,7 @@ var getSubjects = function(graph, predicate, object) {
         }
     }
     return subjects;
-}
+};
 
 // Evaluate an XPath expression aExpression against a given DOM node
 // or Document object (aNode), returning the results as an array
@@ -170,20 +168,21 @@ var getSubjects = function(graph, predicate, object) {
 // initial work.
 function evaluateXPath(aNode, aExpr) {
     var xpe = aNode.ownerDocument || aNode;
-    var nsResolver = xpe.createNSResolver(aNode.ownerDocument == null ?
+    var nsResolver = xpe.createNSResolver(aNode.ownerDocument === null ?
         aNode.documentElement : aNode.ownerDocument.documentElement);
-    var result = xpe.evaluate(aExpr, aNode, null, 0, null);
+    var result = xpe.evaluate(aExpr, aNode, nsResolver, 0, null);
     var found = [];
     var res;
-    while (res = result.iterateNext()) {
+    while (res = result.iterateNext()) { // jshint ignore:line
         found.push(res);
     }
     return found;
 }
 
 function Metadata(rdfa, og, oembed, rules, document) {
-    var i, j, elements, element, subject, subjects, id, src, selector, sources, arg, objects, main;
-    var mainSubject;
+    var i, j, k, elements, element, subject, subjects,
+        id, src, selector, sources, source, arg, objects,
+        object, main;
     var rewriteMainSubject;
     var metadataGraph = {};
     var properties = {};
@@ -228,7 +227,7 @@ function Metadata(rdfa, og, oembed, rules, document) {
                 elements = evaluateXPath(document, arg);
 
                 if (elements[0]) {
-                    if (elements[0].nodeType == 2) { // attribute
+                    if (elements[0].nodeType === 2) { // attribute
                         rewriteMainSubject = elements[0].value;
                     } else {
                         throw new Error('Unsupported node type returned by XPath expression: ' + arg);
@@ -291,6 +290,7 @@ function Metadata(rdfa, og, oembed, rules, document) {
             }
         }
 
+        // look for mainElement, if required by rules
         if (rules && rules.mainElement) {
             for (j = 0; j < rules.mainElement.length; j++) {
                 selector = rules.mainElement[j];
@@ -319,11 +319,13 @@ function Metadata(rdfa, og, oembed, rules, document) {
                             ];
                         }
 
-                        sources.forEach(function(source){
+                        for (k = 0; k < sources.length; k++) {
+                            source = sources[k];
+
                             switch (source) {
                                 case 'single-subject':
                                     // TODO: consider og for this case
-                                    subjects = Object.keys(rdfa)
+                                    subjects = Object.keys(rdfa);
                                     if (subjects.length === 1) {
                                         subject = subjects[0];
                                         console.debug('found single subject: ' + subjects[0]);
@@ -337,16 +339,19 @@ function Metadata(rdfa, og, oembed, rules, document) {
 
                                 default:
                                     throw new Error('unknown siteRules.mainSubject: ' + sources[i]);
-                                    break;
                             }
-                        });
+
+                            if (subject) {
+                                break;
+                            }
+                        }
                     }
 
                     if (!subject) {
                         throw new Error("Main subject not found");
                     }
-                    main = true;
 
+                    main = true;
                     // expose mainSubject to the user as well
                     this.mainSubject = rewriteMainSubject ? rewriteMainSubject : subject;
                     break;
@@ -354,13 +359,15 @@ function Metadata(rdfa, og, oembed, rules, document) {
             }
         }
 
-        if (!subject)
+        if (!subject) {
             continue;
+        }
 
-        // copy metadata for this subject to graph in order from rules
-        rules.source.forEach(function(source) {
+        // copy metadata for this subject to graph in order specified in rules
+        for (j = 0; j < rules.source.length; j++) {
+            source = rules.source[j];
             // oembed
-            if (source == 'oembed' && oembed && main) {
+            if (source === 'oembed' && oembed && main) {
                 for (var key in oembed) {
                     if (oembed.hasOwnProperty(key)) {
                         var propertyName = null;
@@ -393,22 +400,24 @@ function Metadata(rdfa, og, oembed, rules, document) {
                 }
             }
             // rdfa, og
-            else if ((source == 'rdfa' && subject in rdfa) || (source == 'og' && subject in og)) {
+            else if ((source === 'rdfa' && subject in rdfa) || (source === 'og' && subject in og)) {
                 var graph = {'rdfa': rdfa, 'og': og}[source];
 
                 for (var predicate in graph[subject]) {
                     if (graph[subject].hasOwnProperty(predicate)) {
-                        graph[subject][predicate].forEach(function(object) {
+                        for (j = 0; j < graph[subject][predicate].length; j++) {
+                            object = graph[subject][predicate][i];
+
                             if (main && rewriteMainSubject) {
                                 copyTriple(rewriteMainSubject, predicate, object, metadataGraph, properties);
                             } else {
                                 copyTriple(subject, predicate, object, metadataGraph, properties);
                             }
-                        });
+                        }
                     }
                 }
             }
-        });
+        }
     }
 
     this.rdfa = rdfa;
@@ -502,10 +511,12 @@ if (_nodejs) {
  * URI is the actual endpoint URL.
  */
 var getPublishedMetadata = function(uri, options, rules, callback) {
+    var req;
+
     if (_nodejs) {
-        var req = new xhr.XMLHttpRequest();
+        req = new xhr.XMLHttpRequest();
     } else {
-        var req = new XMLHttpRequest();
+        req = new XMLHttpRequest();
     }
 
     console.debug('Getting oembed from: ' + uri);
