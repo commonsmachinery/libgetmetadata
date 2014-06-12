@@ -16,6 +16,6 @@ lint:
 	$(JSHINT) $(REPORTER) $(node-js)
 
 test:
-	@./node_modules/.bin/mocha --require test/common test/tests.js
+	@./node_modules/.bin/mocha --require test/common test/tests.js $(MOCHA_FLAGS)
 
 .PHONY: all clean lint test

@@ -180,70 +180,11 @@ function evaluateXPath(aNode, aExpr) {
 }
 
 function Metadata(rdfa, og, oembed, rules, document) {
-    var i, j, k, elements, element, subject, subjects,
-        id, src, selector, sources, source, arg, objects,
-        object, main;
+    var i, j, k, elements, element, subject, subjects, id, src,
+        selectors, selector, sources, source, arg, objects, object, main;
     var rewriteMainSubject;
     var metadataGraph = {};
     var properties = {};
-
-    // look for new main subject, if dictated by rules
-    if (rules && rules.rewriteMainSubject) {
-        sources = typeof rules.rewriteMainSubject === 'string' ?
-            [rules.rewriteMainSubject] : rules.rewriteMainSubject;
-
-        for (i = 0; i < sources.length; i++) {
-            if (sources[i].indexOf('oembed:') === 0) {
-                // use parameter from oembed data, typically web_page
-                arg = sources[i].slice(7);
-                rewriteMainSubject = oembed[arg];
-                break;
-            }
-            else if (sources[i].indexOf('rdfa:') === 0) {
-                // Find a triple with this predicate
-                arg = sources[i].slice(5);
-                objects = getSubjects(rdfa, arg);
-
-                if (objects.length === 1 && objects[0]) {
-                    rewriteMainSubject = objects[0].value;
-                    break;
-                }
-            }
-            else if (sources[i].indexOf('og:') === 0) {
-                // Find a triple with this predicate
-                arg = sources[i].slice(3);
-                // TODO: we don't really need to dig deep into og (it's flat)
-                subject = getSubjects(og)[0];
-                objects = og[subject][arg];
-
-                if (objects.length === 1 && objects[0]) {
-                    rewriteMainSubject = objects[0].value;
-                    break;
-                }
-            }
-            else if (sources[i].indexOf('xpath:') === 0) {
-                // Find a link with this attribute
-                arg = sources[i].slice(6);
-                elements = evaluateXPath(document, arg);
-
-                if (elements[0]) {
-                    if (elements[0].nodeType === 2) { // attribute
-                        rewriteMainSubject = elements[0].value;
-                    } else {
-                        throw new Error('Unsupported node type returned by XPath expression: ' + arg);
-                    }
-                    break;
-                }
-            } else if (sources[i].indexOf('urlregex:') === 0) {
-                arg = new RegExp(sources[i].slice(9));
-                throw new Error('urlregex support not yet implemented');
-            }
-        }
-
-        if (!rewriteMainSubject) {
-            throw new Error('rewriteMainSubject present in site-rules, but no rewrite candidate found');
-        }
-    }
 
     // Discover elements and subjects based on standards, rather than
     // knowledge about a specific page.
@@ -292,8 +233,10 @@ function Metadata(rdfa, og, oembed, rules, document) {
 
         // look for mainElement, if required by rules
         if (rules && rules.mainElement) {
-            for (j = 0; j < rules.mainElement.length; j++) {
-                selector = rules.mainElement[j];
+            selectors = typeof rules.mainElement === 'string' ?
+                [rules.mainElement] : rules.mainElement;
+            for (j = 0; j < selectors.length; j++) {
+                selector = selectors[j];
 
                 var matchMethod = element.matchesSelector || element.webkitMatchesSelector || element.mozMatchesSelector;
 
@@ -338,7 +281,7 @@ function Metadata(rdfa, og, oembed, rules, document) {
                                     break;
 
                                 default:
-                                    throw new Error('unknown siteRules.mainSubject: ' + sources[i]);
+                                    throw new Error('unknown siteRules.mainSubject: ' + source);
                             }
 
                             if (subject) {
@@ -352,8 +295,6 @@ function Metadata(rdfa, og, oembed, rules, document) {
                     }
 
                     main = true;
-                    // expose mainSubject to the user as well
-                    this.mainSubject = rewriteMainSubject ? rewriteMainSubject : subject;
                     break;
                 }
             }
@@ -361,6 +302,70 @@ function Metadata(rdfa, og, oembed, rules, document) {
 
         if (!subject) {
             continue;
+        }
+
+        // look for new main subject, if dictated by rules
+        if (main && rules.rewriteMainSubject) {
+            sources = typeof rules.rewriteMainSubject === 'string' ?
+                [rules.rewriteMainSubject] : rules.rewriteMainSubject;
+
+            for (j = 0; j < sources.length; j++) {
+                source = sources[j];
+                if (source.indexOf('oembed:') === 0) {
+                    // use parameter from oembed data, typically web_page
+                    arg = source.slice(7);
+                    rewriteMainSubject = oembed[arg];
+                    break;
+                }
+                else if (source.indexOf('rdfa:') === 0) {
+                    // Find a triple with this predicate
+                    arg = source.slice(5);
+                    objects = rdfa[subject] ? rdfa[subject][arg] : null;
+
+                    if (objects.length === 1 && objects[0]) {
+                        rewriteMainSubject = objects[0].value;
+                        break;
+                    }
+                }
+                else if (source.indexOf('og:') === 0) {
+                    // Find a triple with this predicate
+                    arg = source.slice(3);
+                    // TODO: we don't really need to dig deep into og (it's flat)
+                    subject = getSubjects(og)[0];
+                    objects = og[subject][arg];
+
+                    if (objects.length === 1 && objects[0]) {
+                        rewriteMainSubject = objects[0].value;
+                        break;
+                    }
+                }
+                else if (source.indexOf('xpath:') === 0) {
+                    // Find a link with this attribute
+                    arg = source.slice(6);
+                    elements = evaluateXPath(document, arg);
+
+                    if (elements[0]) {
+                        if (elements[0].nodeType === 2) { // attribute
+                            rewriteMainSubject = elements[0].value;
+                        } else {
+                            throw new Error('Unsupported node type returned by XPath expression: ' + arg);
+                        }
+                        break;
+                    }
+                } else if (source.indexOf('urlregex:') === 0) {
+                    arg = new RegExp(source.slice(9));
+                    throw new Error('urlregex support not yet implemented');
+                }
+            }
+
+            if (!rewriteMainSubject) {
+                throw new Error('rewriteMainSubject present in site-rules, but no rewrite candidate found');
+            }
+        }
+
+        // expose mainSubject to the user as well
+        if (main) {
+            this.mainSubject = rewriteMainSubject ? rewriteMainSubject : subject;
         }
 
         // copy metadata for this subject to graph in order specified in rules
@@ -405,8 +410,8 @@ function Metadata(rdfa, og, oembed, rules, document) {
 
                 for (var predicate in graph[subject]) {
                     if (graph[subject].hasOwnProperty(predicate)) {
-                        for (j = 0; j < graph[subject][predicate].length; j++) {
-                            object = graph[subject][predicate][i];
+                        for (k = 0; k < graph[subject][predicate].length; k++) {
+                            object = graph[subject][predicate][k];
 
                             if (main && rewriteMainSubject) {
                                 copyTriple(rewriteMainSubject, predicate, object, metadataGraph, properties);
