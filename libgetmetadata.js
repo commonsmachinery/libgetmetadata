@@ -108,8 +108,8 @@ JsonRDFaProcessor.prototype.addTriple = function(origin, subject, predicate, obj
     graph[subject][predicate].push(jsonObject);
 };
 
-// add triple to graph and copy object value to property dictionary if mapped
-var copyTriple = function(subject, predicate, object, graph, properties) {
+// add triple to graph and copy object value to annotations dictionary if mapping exists
+var copyTriple = function(subject, predicate, object, graph, annotations) {
     if (!graph.hasOwnProperty(subject)) {
         graph[subject] = {};
     }
@@ -129,11 +129,11 @@ var copyTriple = function(subject, predicate, object, graph, properties) {
     graph[subject][predicate].push(object);
 
     // add core property
-    if (!(subject in properties)) {
-        properties[subject] = {};
+    if (!(subject in annotations)) {
+        annotations[subject] = {};
     }
     if (predicate in ontologyMap) {
-        properties[subject][ontologyMap[predicate]] = object.value;
+        annotations[subject][ontologyMap[predicate]] = object.value;
     }
 };
 
@@ -184,7 +184,7 @@ function Metadata(rdfa, og, oembed, rules, document) {
         selectors, selector, sources, source, arg, objects, object, main;
     var rewriteMainSubject;
     var metadataGraph = {};
-    var properties = {};
+    var annotations = {};
 
     // Discover elements and subjects based on standards, rather than
     // knowledge about a specific page.
@@ -396,9 +396,9 @@ function Metadata(rdfa, og, oembed, rules, document) {
 
                         if (propertyName) {
                             if (rewriteMainSubject) {
-                                copyTriple(rewriteMainSubject, propertyName, oembedObject, metadataGraph, properties);
+                                copyTriple(rewriteMainSubject, propertyName, oembedObject, metadataGraph, annotations);
                             } else {
-                                copyTriple(subject, propertyName, oembedObject, metadataGraph, properties);
+                                copyTriple(subject, propertyName, oembedObject, metadataGraph, annotations);
                             }
                         }
                     }
@@ -414,9 +414,9 @@ function Metadata(rdfa, og, oembed, rules, document) {
                             object = graph[subject][predicate][k];
 
                             if (main && rewriteMainSubject) {
-                                copyTriple(rewriteMainSubject, predicate, object, metadataGraph, properties);
+                                copyTriple(rewriteMainSubject, predicate, object, metadataGraph, annotations);
                             } else {
-                                copyTriple(subject, predicate, object, metadataGraph, properties);
+                                copyTriple(subject, predicate, object, metadataGraph, annotations);
                             }
                         }
                     }
@@ -432,7 +432,7 @@ function Metadata(rdfa, og, oembed, rules, document) {
     this.document = document;
 
     this.graph = metadataGraph;
-    this.properties = properties;
+    this.annotations = annotations;
 }
 
 /**
