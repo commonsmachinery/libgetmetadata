@@ -353,8 +353,9 @@ function Metadata(rdfa, og, oembed, rules, document) {
                         break;
                     }
                 } else if (source.indexOf('urlregex:') === 0) {
-                    arg = new RegExp(source.slice(9));
-                    throw new Error('urlregex support not yet implemented');
+                    // filter URL using matched groups in a regular expression
+                    arg = source.slice(9);
+                    rewriteMainSubject = new RegExp(arg, 'g').exec(document.documentURI).slice(1).join("");
                 }
             }
 

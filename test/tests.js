@@ -319,4 +319,19 @@ describe('rewrite-main-subject', function(){
             assert.equal(result, expected);
         })
     });
+
+    describe('urlregex', function(){
+        before(getMetadataWrapper('rdfa+mainsubject.html', null, {
+            source: "rdfa",
+            mainElement: "img#main",
+            rewriteMainSubject: "urlregex:(^.*?:[\\/]*).*(mainsubject.html)"
+        }));
+
+        it('urlregex', function(){
+            result = metadata.mainSubject;
+            expected = "file:///mainsubject.html";
+
+            assert.equal(result, expected);
+        })
+    });
 });
