@@ -19,8 +19,8 @@
     ],
     "dependencies": {
         "jsdom": "*",
-        "uuid": "*",
-        "xmlhttprequest": "*"
+        "request": "*",
+        "bluebird": "*"
     },
     "devDependencies": {
         "mocha": "*",

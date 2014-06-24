@@ -1,7 +1,7 @@
 
 JSHINT = ./node_modules/.bin/jshint
 
-node-js = libgetmetadata.js
+node-js = libgetmetadata.js lib/*.js
 
 REPORTER=
 ifeq ($(EMACS),t)
