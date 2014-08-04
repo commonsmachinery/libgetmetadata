@@ -1,7 +1,16 @@
 
-JSHINT = ./node_modules/.bin/jshint
+top := $(CURDIR)
 
-node-js = libgetmetadata.js lib/*.js
+JSHINT = $(top)/node_modules/.bin/jshint
+MOCHA = $(top)/node_modules/.bin/mocha
+
+src = $(top)/libgetmetadata.js $(top)/lib/*.js
+
+# Modules should add files to be checked with jshint
+jshint-files = $(src)
+
+# Modules should add files to be run as unit tests
+mocha-files = $(top)/test/tests.js
 
 REPORTER=
 ifeq ($(EMACS),t)
@@ -13,9 +22,9 @@ all: lint
 clean:
 
 lint:
-	$(JSHINT) $(REPORTER) $(node-js)
+	$(JSHINT) $(REPORTER) $(jshint-files)
 
 test:
-	@./node_modules/.bin/mocha --require test/common test/tests.js $(MOCHA_FLAGS)
+	$(MOCHA) $(MOCHA_FLAGS) $(mocha-files)
 
 .PHONY: all clean lint test
