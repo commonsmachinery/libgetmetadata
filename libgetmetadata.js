@@ -8,6 +8,7 @@
 
 var devart = require('./lib/devart.js');
 var flickr = require('./lib/flickr.js');
+var wikicommons = require('./lib/wikicommons.js');
 
 var notImplemented = {
     getMedia: function(url) {
@@ -21,6 +22,7 @@ var siteModules = {
     '^https?:\/\/sta.sh/.*': devart,
     '^https?:\/\/[a-zA-Z0-9][a-zA-Z0-9-]*\.deviantart\.com\/.*?#\/d.*': devart,
     '^https?:\/\/(www\\.)?flickr\\.com/photos/': flickr,
+    '^https?:\/\/commons.wikimedia.org/wiki/.*File:.+': wikicommons,
     '.*': notImplemented
 };
 

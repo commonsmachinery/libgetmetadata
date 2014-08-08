@@ -37,3 +37,20 @@ describe('deviantArt', function(){
         });
     })
 });
+
+describe('wikicommons', function(){
+    it('should load multiple objects', function(done){
+        var url = 'http://commons.wikimedia.org/wiki/File:30C3_Commons_Machinery_2.jpg';
+        var maObjects;
+
+        getMetadata(url).then(function(result) {
+            maObjects = result;
+
+            expect ( maObjects.length ).to.be( 1 );
+
+            done();
+        }).catch(function(err) {
+            done(err);
+        });
+    })
+});
