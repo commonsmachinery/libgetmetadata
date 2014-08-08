@@ -1,16 +1,13 @@
-// -*- coding: utf-8 -*-
 // libgetmetadata - Collect metadata for creative works from various sources.
 //
 // Copyright 2014 Commons Machinery http://commonsmachinery.se/
-//
-// Authors: Peter Liljenberg <peter@commonsmachinery.se>
-//          Artem Popov <artfwo@commonsmachinery.se>
 //
 // Distributed under an GPLv2 license, please see LICENSE in the top dir.
 
 'use strict';
 
-var devArt = require('./lib/devart.js');
+var devart = require('./lib/devart.js');
+var flickr = require('./lib/flickr.js');
 
 var notImplemented = {
     getMedia: function(url) {
@@ -19,10 +16,11 @@ var notImplemented = {
 };
 
 var siteModules = {
-    '^https?:\/\/[a-zA-Z0-9][a-zA-Z0-9-]*\.deviantart\.com\/art\/.*': devArt,
-    '^https?:\/\/fav.me\/.*': devArt,
-    '^https?:\/\/sta.sh/.*': devArt,
-    '^https?:\/\/[a-zA-Z0-9][a-zA-Z0-9-]*\.deviantart\.com\/.*?#\/d.*': devArt,
+    '^https?:\/\/[a-zA-Z0-9][a-zA-Z0-9-]*\.deviantart\.com\/art\/.*': devart,
+    '^https?:\/\/fav.me\/.*': devart,
+    '^https?:\/\/sta.sh/.*': devart,
+    '^https?:\/\/[a-zA-Z0-9][a-zA-Z0-9-]*\.deviantart\.com\/.*?#\/d.*': devart,
+    '^https?:\/\/(www\\.)?flickr\\.com/photos/': flickr,
     '.*': notImplemented
 };
 
