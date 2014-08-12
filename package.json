@@ -20,7 +20,8 @@
     "dependencies": {
         "jsdom": "*",
         "request": "*",
-        "bluebird": "*"
+        "bluebird": "*",
+        "underscore": "1.6.x"
     },
     "devDependencies": {
         "mocha": "*",

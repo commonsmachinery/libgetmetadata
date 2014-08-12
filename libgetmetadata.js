@@ -11,6 +11,7 @@
 'use strict';
 
 var devArt = require('./lib/devart.js');
+var discover = require('./lib/discover.js');
 
 var notImplemented = {
     getMedia: function(url) {
@@ -23,7 +24,7 @@ var siteModules = {
     '^https?:\/\/fav.me\/.*': devArt,
     '^https?:\/\/sta.sh/.*': devArt,
     '^https?:\/\/[a-zA-Z0-9][a-zA-Z0-9-]*\.deviantart\.com\/.*?#\/d.*': devArt,
-    '.*': notImplemented
+    '.*': discover,
 };
 
 var getMetadata = function(url) {
