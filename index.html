@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset='utf-8'>
+    <meta http-equiv="X-UA-Compatible" content="chrome=1">
+
+    <link rel="stylesheet" type="text/css" href="stylesheets/stylesheet.css" media="screen">
+    <link rel="stylesheet" type="text/css" href="stylesheets/pygment_trac.css" media="screen">
+    <link rel="stylesheet" type="text/css" href="stylesheets/print.css" media="print">
+
+    <title>libgetmetadata by commonsmachinery</title>
+  </head>
+
+  <body>
+
+    <header>
+      <div class="container">
+        <h1>libgetmetadata</h1>
+        <h2>Extracting image metadata from web pages and other sources</h2>
+
+        <section id="downloads">
+          <a href="https://github.com/commonsmachinery/libgetmetadata/zipball/master" class="btn">Download as .zip</a>
+          <a href="https://github.com/commonsmachinery/libgetmetadata/tarball/master" class="btn">Download as .tar.gz</a>
+          <a href="https://github.com/commonsmachinery/libgetmetadata" class="btn btn-github"><span class="icon"></span>View on GitHub</a>
+        </section>
+      </div>
+    </header>
+
+    <div class="container">
+      <section id="main_content">
+        <h1>
+<a name="libgetmetadata" class="anchor" href="#libgetmetadata"><span class="octicon octicon-link"></span></a>libgetmetadata</h1>
+
+<p>libgetmetadata aims to simplify extracting metadata about creative works
+from webpages and other sources. Only images are supported at the moment.</p>
+
+<h2>
+<a name="supported-metadata-sources" class="anchor" href="#supported-metadata-sources"><span class="octicon octicon-link"></span></a>Supported metadata sources</h2>
+
+<ul>
+<li>RDFa metadata.</li>
+<li>Open Graph.</li>
+<li>oEmbed.</li>
+</ul><h2>
+<a name="basic-usage" class="anchor" href="#basic-usage"><span class="octicon octicon-link"></span></a>Basic usage</h2>
+
+<pre><code>var getMetadata = require("./libgetmetadata").getMetadata;
+getMetadata("http://example.com", null, null, callback);
+// or
+getMetadata(document, null, null, callback);
+</code></pre>
+
+<p>Where callback is a function with the signature <code>function(error, result)</code>.
+It can be defined as follows:</p>
+
+<pre><code>function callback(error, metadata) {
+    console.log(metadata.graph);
+    // or
+    console.log(metadata.graph[metadata.mainSubject]);
+}
+</code></pre>
+
+<p>The primary function exported by libgetmetadata is
+<code>getMetadata(source, options, rules, callback)</code>, where</p>
+
+<ul>
+<li>
+<code>source</code> - can be URI or document.</li>
+<li>
+<code>options</code> - can contain custom processor for DOM and method for getting published metadata.</li>
+<li>
+<code>rules</code> - rules for scraping metadata, usually site-specific.</li>
+<li>
+<code>callback</code> - function with signature <code>function(error, result)</code> to be called on success or failure.</li>
+</ul><h2>
+<a name="site-rules" class="anchor" href="#site-rules"><span class="octicon octicon-link"></span></a>Site rules</h2>
+
+<p>Rules should be an object (typically stored as JSON) for fine-tuning
+metadata lookup on specific sites. Meaningful properties are:</p>
+
+<ul>
+<li>
+<code>source</code>: an array containing any of 'og', 'rdfa', 'oembed'. These sources will be used to build the graph.</li>
+<li>
+<code>oembed</code>: oEmbed fetching rules defined as follows:
+
+<ul>
+<li>
+<code>type</code>: "json" or "xml";</li>
+<li>
+<code>endpoint</code>: base URL for oEmbed endpoint</li>
+<li>
+<code>map</code>: a dictionary mapping oEmbed properties to values in the form <code>{property: "...", type: "..."}</code>, where <code>property</code> is the qualified property name property and <code>type</code> is either "uri" or "literal".</li>
+</ul>
+</li>
+<li>
+<code>mainElement</code>: an array of CSS selectors to look for main element.</li>
+<li>
+<code>rewriteMainSubject</code>: array of lookup patterns for main element subject. Required if mainElement is specified and should include one or more of the following strings:
+
+<ul>
+<li>"oembed:..." - parameter from oembed data, typically "web_page".</li>
+<li>"rdfa:..." - use subject from RDFa triples with this predicate.</li>
+<li>"og:..." - use subject from OpenGraph triples with this predicate.</li>
+<li>"xpath:..." - use subject found using an XPath expression.</li>
+</ul>
+</li>
+</ul><p>For example:</p>
+
+<pre><code>{
+    "source": ["oembed", "rdfa"],
+
+    "oembed": {
+        "type": "json",
+        "endpoint": "http://example.com/oembed"
+    },
+
+    "mainElement": [
+        "img.main"
+    ],
+
+    "rewriteMainSubject": [
+        "xpath:/html/head/link[@rel='canonical']/@href"
+    ]
+}
+</code></pre>
+
+<h2>
+<a name="using-metadata" class="anchor" href="#using-metadata"><span class="octicon octicon-link"></span></a>Using metadata</h2>
+
+<p>The metadata object passed to callback has the following properties:</p>
+
+<ul>
+<li>
+<code>graph</code>: Complete graph in RDF/JSON form: <code>{s: p: [o: {...}]}</code>
+</li>
+<li>
+<code>mainSubject</code>: Main element subject, if any.</li>
+<li>
+<code>properties</code>: Core properties, see below for details.</li>
+</ul><p>Raw metadata can be accessed through properties <code>rdfa</code>, <code>og</code>, <code>oembed</code>.</p>
+
+<h2>
+<a name="core-properties" class="anchor" href="#core-properties"><span class="octicon octicon-link"></span></a>Core properties</h2>
+
+<p>libgetmetadata does basic mapping of RDF metadata to a set of core properties
+defined in <a href="http://www.w3.org/TR/mediaont-10/">W3C Ontology for Media Resources (OMR)</a>.</p>
+
+<p>The core properties are available through <code>metadata.properties[subject]</code> and
+include:</p>
+
+<ul>
+<li>title - title of the work.</li>
+<li>identifier - URL pointing to the work web page</li>
+<li>creator - author of the work.</li>
+<li>policy - license URL.</li>
+</ul><h2>
+<a name="running-tests" class="anchor" href="#running-tests"><span class="octicon octicon-link"></span></a>Running tests</h2>
+
+<p>Running the test suite requires Mocha framework. Run it with <code>make test</code>.</p>
+
+<h2>
+<a name="license" class="anchor" href="#license"><span class="octicon octicon-link"></span></a>License</h2>
+
+<p>Copyright 2014 Commons Machinery <a href="http://commonsmachinery.se/">http://commonsmachinery.se/</a></p>
+
+<p>Distributed under an GPLv2 license, please see LICENSE in the top dir.</p>
+
+<p>Contact: <a href="mailto:dev@commonsmachinery.se">dev@commonsmachinery.se</a></p>
+      </section>
+    </div>
+
+              <script type="text/javascript">
+            var gaJsHost = (("https:" == document.location.protocol) ? "https://ssl." : "http://www.");
+            document.write(unescape("%3Cscript src='" + gaJsHost + "google-analytics.com/ga.js' type='text/javascript'%3E%3C/script%3E"));
+          </script>
+          <script type="text/javascript">
+            try {
+              var pageTracker = _gat._getTracker("UA-38814645-3");
+            pageTracker._trackPageview();
+            } catch(err) {}
+          </script>
+
+  </body>
+</html>
